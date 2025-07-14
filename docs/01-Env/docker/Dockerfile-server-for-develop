@@ -1,0 +1,92 @@
+# 1、基础镜像
+FROM rockylinux:9
+
+# 2、镜像作者和电子邮箱
+LABEL maintainer="chenlong220192@gmail.com"
+
+# 3、更新系统并安装基础工具
+RUN dnf update -y && \
+    dnf install -y dnf-utils && \
+    dnf clean all
+
+# 4、更换dnf源为阿里云镜像
+RUN sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+        -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' \
+        -i.bak \
+        /etc/yum.repos.d/rocky*.repo && \
+    dnf makecache
+
+# 5、安装基础工具包 (修复curl冲突问题)
+RUN dnf install -y --allowerasing sudo lsof net-tools telnet iproute curl wget vim make git bash-completion zip unzip tree && \
+    dnf install -y epel-release && \
+    dnf install -y htop && \
+    dnf clean all
+
+# 6、安装Docker客户端
+RUN dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && \
+    dnf install -y docker-ce-cli && \
+    dnf clean all
+
+# 7、安装SSH服务 密码"123456"
+RUN dnf install -y passwd openssl openssh-server && \
+    ssh-keygen -q -t rsa -b 2048 -f /etc/ssh/ssh_host_rsa_key -N '' && \
+    ssh-keygen -q -t ecdsa -f /etc/ssh/ssh_host_ecdsa_key -N '' && \
+    ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N '' && \
+    echo 123456 | passwd --stdin root && \
+    # 配置SSH允许root登录
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# 8、安装Java 11.0.2-open
+RUN curl -s "https://get.sdkman.io" | bash && \
+    source "$HOME/.sdkman/bin/sdkman-init.sh" && \
+    sdk install java 11.0.2-open
+
+WORKDIR /app
+
+# 9、安装Node.js v18.20.5
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash && \
+    export NVM_DIR="$HOME/.nvm" && \
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" && \
+    nvm install v18.20.5 && \
+    nvm use v18.20.5 && \
+    nvm alias default v18.20.5
+
+# 10、容器初始化脚本
+RUN echo '#!/bin/bash' > /app/init.sh && \
+    echo 'source "$HOME/.sdkman/bin/sdkman-init.sh"' >> /app/init.sh && \
+    echo 'sdk offline enable' >> /app/init.sh && \
+    echo 'sdk default java 11.0.2-open' >> /app/init.sh && \
+    echo 'echo "=================================================="' >> /app/init.sh && \
+    echo 'echo "JDK Information:"' >> /app/init.sh && \
+    echo 'java -version' >> /app/init.sh && \
+    echo 'echo "=================================================="' >> /app/init.sh && \
+    echo 'export NVM_DIR="$HOME/.nvm"' >> /app/init.sh && \
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> /app/init.sh && \
+    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> /app/init.sh && \
+    echo 'echo "Node.js Information:"' >> /app/init.sh && \
+    echo 'node --version' >> /app/init.sh && \
+    echo 'echo "NPM Information:"' >> /app/init.sh && \
+    echo 'npm --version' >> /app/init.sh && \
+    echo 'echo "=================================================="' >> /app/init.sh && \
+    echo 'echo "Docker Information:"' >> /app/init.sh && \
+    echo 'docker --version' >> /app/init.sh && \
+    echo 'echo "=================================================="' >> /app/init.sh && \
+    echo 'echo "Starting SSH service..."' >> /app/init.sh && \
+    echo '/usr/sbin/sshd -D &' >> /app/init.sh && \
+    echo 'echo "SSH service started on port 22"' >> /app/init.sh && \
+    echo 'echo "Root password: 123456"' >> /app/init.sh && \
+    echo 'echo "=================================================="' >> /app/init.sh && \
+    echo 'echo "Development environment is ready!"' >> /app/init.sh && \
+    echo 'tail -f /dev/null' >> /app/init.sh && \
+    chmod +x /app/init.sh
+
+# 11、申明端口
+EXPOSE 22
+
+# 12、容器启动后执行命令
+ENTRYPOINT ["/app/init.sh"]
+
+# 构建命令
+## docker build -f ./docker/Dockerfile-server-for-develop --rm -t site.mingsha/mingsha-server:openjdk-11 .

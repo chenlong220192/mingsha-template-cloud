@@ -1,0 +1,19 @@
+# 1、基础镜像
+FROM openjdk:11
+
+# 2、镜像作者和电子邮箱
+LABEL maintainer="chenlong220192@gmail.com"
+
+WORKDIR /data
+
+# 复制skywalking agent安装包到运行环境镜像
+COPY ./agent/apache-skywalking-java-agent-9.2.0.tgz /data
+
+# 解压skywalking agent安装包
+RUN tar -zxvf apache-skywalking-java-agent-9.2.0.tgz && \
+    chown -R root:root skywalking-agent && \
+    mv skywalking-agent / && \
+    rm -rf apache-skywalking-java-agent-9.2.0.tgz
+
+# 构建命令
+## docker build -f ./docker/Dockerfile-runtime-for-service --rm -t site.mingsha/mingsha-runtime:openjdk-11 .

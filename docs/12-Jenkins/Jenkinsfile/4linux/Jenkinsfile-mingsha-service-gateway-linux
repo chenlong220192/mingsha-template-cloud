@@ -1,0 +1,223 @@
+// Jenkinsfile (Declarative Pipeline)
+pipeline {
+
+    options {
+        // 丢弃旧的构建
+        buildDiscarder(
+            logRotator(
+              daysToKeepStr: '10',
+              numToKeepStr: '10',
+              artifactDaysToKeepStr: '10',
+              artifactNumToKeepStr: '10'
+            )
+        )
+    }
+
+    environment {
+        REPO_URL = 'https://github.com/chenlong220192/mingsha-spring-cloud.git'
+    }
+
+    agent { label 'openjdk11' }
+
+    parameters{
+        string(name:'branch', defaultValue:'master', description:'Git Branch')
+        choice(
+            name:'server',
+            description:'选择要部署的服务器',
+            choices:['cloud-server-linux']
+        )
+        choice(
+            name:'deploy',
+            description:'yes-部署；no-不部署；',
+            choices:['yes','no']
+        )
+    }
+
+    stages {
+
+        /**
+        * 参数校验
+        */
+        stage("Params Validation"){
+            steps {
+                echo '+++++++++ 开始进行参数校验 +++++++++'
+                script {
+                    // 执行步骤校验
+                    if(!params.branch){
+                       throw new Exception("请传入【branch】参数")
+                    }
+                    if(!params.deploy){
+                        throw new Exception("请传入【deploy】参数")
+                    }
+                }
+            }
+        }
+
+        /**
+        * SVM
+        */
+        stage('SVM') {
+            steps {
+                script {
+                    echo '+++++++++ 开始克隆源代码 +++++++++'
+                    sh 'git clone -b ' + params.branch + ' --depth 1 ' + env.REPO_URL + ' temp'
+                    echo '+++++++++ 源代码工作目录 +++++++++'
+                    pwd
+                }
+            }
+        }
+
+        /**
+        * 单元测试
+        */
+        stage('Unit Test') {
+            steps {
+                script {
+                    echo '+++++++++ 开始单元测试 +++++++++'
+                    sh '''
+                        cd temp
+                        make test
+                    '''
+                }
+            }
+            post {
+                success{
+                    allure([ includeProperties: false, jdk: '', properties: [], reportBuildPolicy: 'ALWAYS', results: [[path: 'target/allure-results']] ])
+                }
+            }
+        }
+
+        /**
+        * 静态代码扫描
+        */
+        stage('SonarQube Static Analysis') {
+            steps {
+                script {
+                    echo '+++++++++ 开始静态代码扫描 +++++++++'
+                    try{
+                        sh 'cd temp && make test-sonarqube'
+                    } catch(all) {
+                        echo '静态代码扫描报错，直接跳过。'
+                    }
+                }
+            }
+        }
+
+        /**
+        * 打包
+        */
+        stage('Package') {
+            steps {
+                script {
+                    echo '+++++++++ 开始打包 +++++++++'
+                    sh '''
+                        cd temp
+                        make package
+                    '''
+                }
+            }
+            post {
+                success{
+                    archiveArtifacts 'temp/mingsha-service/mingsha-service-gateway/target/*.jar'
+                }
+            }
+        }
+
+        /**
+        * 制品推送到仓库
+        */
+        stage('Package Push') {
+            steps {
+                script {
+                    echo '+++++++++ 开始push制品 +++++++++'
+                }
+            }
+        }
+
+        /**
+        * 部署
+        */
+        stage('Deploy') {
+            steps {
+                echo '+++++++++ 开始传包 +++++++++'
+                // time分钟超时
+                timeout(time: 30, unit: 'MINUTES') {
+                  // 重试n次
+                  retry(1) {
+                    // publisher
+                    sshPublisher failOnError: true,
+                        publishers: [
+                            sshPublisherDesc(
+                                configName: params.server,
+                                verbose: true,
+                                usePromotionTimestamp: false,
+                                useWorkspaceInPromotion: false,
+                                transfers: [
+                                    sshTransfer(
+                                        usePty: false,
+                                        flatten: false,
+                                        cleanRemote: true,
+                                        makeEmptyDirs: false,
+                                        noDefaultExcludes: false,
+                                        remoteDirectorySDF: false,
+                                        remoteDirectory: '/app/mingsha-service-gateway',
+                                        patternSeparator: '[, ]+',
+                                        excludes: '',
+                                        removePrefix: 'temp/mingsha-service/mingsha-service-gateway/target',
+                                        sourceFiles: 'temp/mingsha-service/mingsha-service-gateway/target/*.jar',
+                                        execCommand: '''
+                                          echo '+++++++++ 开始停止服务 mingsha-service-gateway +++++++++'
+                                          PID=$(ps -eo user,pid,tty,args | grep "mingsha-service-gateway" | grep -v grep | awk '{ print $2 }')
+                                          if [[ -z "$PID" ]]
+                                          then
+                                              echo mingsha-service-gateway is already stopped
+                                          else
+                                              echo "kill -9 ${PID}"
+                                              kill ${PID}
+                                              if [[ $? -eq 0 ]]
+                                            	then
+                                              	echo "stopped successfully"
+                                            	else
+                                              	echo "stopped Failure"
+                                              	exit 1
+                                            	fi
+                                          fi
+                                          echo '+++++++++ 开始部署 +++++++++'
+                                          nohup java -jar -Xms256m -Xmx1024m /app/mingsha-service-gateway/mingsha-service-gateway-1.0.0.jar > mingsha-service-gateway.log 2>&1 &
+                                        ''',
+                                        execTimeout: 600000
+                                    )
+                                ]
+                            )
+                        ]
+                  }
+                }
+            }
+        }
+
+    }
+
+    post{
+        success{
+            echo '部署成功'
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        failure{
+            echo "Oooooops 失败了～～～"
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        aborted{
+            echo "任务终止"
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        unstable{
+            echo "任务构建不稳定，请及时关注！"
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        always{
+            // cleanWs()
+            echo "清理工作空间"
+        }
+    }
+
+}

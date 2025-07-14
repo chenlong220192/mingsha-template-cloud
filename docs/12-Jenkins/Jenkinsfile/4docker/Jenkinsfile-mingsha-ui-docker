@@ -1,0 +1,181 @@
+// Jenkinsfile (Declarative Pipeline)
+pipeline {
+
+    options {
+        // 丢弃旧的构建
+        buildDiscarder(
+            logRotator(
+              daysToKeepStr: '10',
+              numToKeepStr: '10',
+              artifactDaysToKeepStr: '10',
+              artifactNumToKeepStr: '10'
+            )
+        )
+    }
+
+    environment {
+        REPO_URL = 'https://github.com/chenlong220192/mingsha-spring-cloud.git'
+    }
+
+    agent { label 'docker' }
+
+    parameters{
+        string(name:'branch', defaultValue:'master', description:'Git Branch')
+        choice(
+            name:'deploy',
+            description:'yes-部署；no-不部署；',
+            choices:['yes','no']
+        )
+    }
+
+    stages {
+
+        /**
+        * 参数校验
+        */
+        stage("Params Validation"){
+            steps {
+                echo '+++++++++ 开始进行参数校验 +++++++++'
+                script {
+                    // 执行步骤校验
+                    if(!params.branch){
+                       throw new Exception("请传入【branch】参数")
+                    }
+                    if(!params.deploy){
+                        throw new Exception("请传入【deploy】参数")
+                    }
+                }
+            }
+        }
+
+        /**
+        * SVM
+        */
+        stage('SVM') {
+            steps {
+                script {
+                    echo '+++++++++ 开始克隆源代码 +++++++++'
+                    sh 'git clone -b ' + params.branch + ' --depth 1 ' + env.REPO_URL + ' temp'
+                    echo '+++++++++ 源代码工作目录 +++++++++'
+                    pwd
+                }
+            }
+        }
+
+        /**
+        * 安装依赖
+        */
+        stage('Install') {
+            steps {
+                script {
+                    echo '+++++++++ 开始安装依赖 +++++++++'
+                    sh '''
+                        cd temp/mingsha-ui
+                        make install
+                    '''
+                }
+            }
+        }
+
+        /**
+        * 打包
+        */
+        stage('Package') {
+            steps {
+                script {
+                    echo '+++++++++ 开始打包 +++++++++'
+                    sh '''
+                        cd temp/mingsha-ui
+                        make package
+                    '''
+                }
+            }
+        }
+
+        /**
+        * 构建镜像
+        */
+        stage('Image Build') {
+            steps {
+                script {
+                    echo '+++++++++ 开始构建镜像 +++++++++'
+                    sh 'cd temp/mingsha-ui && make docker.build'
+                }
+            }
+        }
+
+        /**
+        * 镜像推送至仓库
+        */
+        stage('Image Push') {
+            steps {
+                script {
+                    echo '+++++++++ 开始push镜像 +++++++++'
+                }
+            }
+        }
+
+        /**
+        * 下线
+        */
+        stage('Container Remove') {
+            when {
+                expression {
+                    params.deploy == 'yes'
+                }
+            }
+            steps {
+                script {
+                    echo '+++++++++ 开始移除容器 +++++++++'
+                    try{
+                        sh 'cd temp/mingsha-ui && make docker.remove'
+                    } catch(all) {
+                        echo '未找到该容器，直接跳过。'
+                    }
+                }
+            }
+        }
+
+        /**
+        * 部署
+        */
+        stage('Container Run') {
+            when {
+                expression {
+                    params.deploy == 'yes'
+                }
+            }
+            steps {
+                script {
+                    echo '+++++++++ 开始运行容器 +++++++++'
+                    sh 'cd temp/mingsha-ui && make docker.run'
+                }
+            }
+        }
+
+    }
+
+    post{
+        success{
+            echo '部署成功'
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        failure{
+            echo "Oooooops 失败了～～～"
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        aborted{
+            echo "任务终止"
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        unstable{
+            echo "任务构建不稳定，请及时关注！"
+            echo "Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+        }
+        always{
+            cleanWs()
+            echo "清理工作空间"
+        }
+    }
+
+}
