@@ -11,7 +11,7 @@
 #### 环境配置
 - **镜像版本**: `nacos/nacos-server:v2.3.2`
 - **运行模式**: `standalone` (单机模式)
-- **端口映射**: 
+- **端口映射**:
   - `7848:7848` (集群端口)
   - `8848:8848` (控制台端口)
   - `9848:9848` (客户端端口)
@@ -79,10 +79,10 @@ curl http://localhost:8848/nacos/v1/console/health/readiness
 
 ```bash
 # 连接MySQL并创建数据库
-docker exec -it mysql-8.0.33 mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mingsha_template_config CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;"
+docker exec -it cloud-mysql mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mingsha_template_config CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;"
 
 # 导入Nacos配置数据
-docker exec -i mysql-8.0.33 mysql -uroot -p123456 mingsha_template_config < ../../sql/mingsha_template_config.sql
+docker exec -i cloud-mysql mysql -uroot -p123456 mingsha_template_config < ../../sql/mingsha_template_config.sql
 ```
 
 ## 🔧 配置说明

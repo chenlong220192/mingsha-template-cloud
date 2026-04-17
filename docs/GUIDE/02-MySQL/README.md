@@ -40,7 +40,7 @@ docker run -d \
 
 #### 使用命令行连接
 ```bash
-docker exec -it mysql-8.0.33 mysql -uroot -p123456
+docker exec -it cloud-mysql mysql -uroot -p123456
 ```
 
 #### 使用客户端连接
@@ -94,19 +94,19 @@ docker run -d \
 #### 导入主数据库
 ```bash
 # 连接MySQL并创建数据库
-docker exec -it mysql-8.0.33 mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mingsha_template_cloud CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;"
+docker exec -it cloud-mysql mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mingsha_template_cloud CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;"
 
 # 导入数据
-docker exec -i mysql-8.0.33 mysql -uroot -p123456 mingsha_template_cloud < ../../sql/mingsha_template_cloud.sql
+docker exec -i cloud-mysql mysql -uroot -p123456 mingsha_template_cloud < ../../sql/mingsha_template_cloud.sql
 ```
 
 #### 导入配置数据库
 ```bash
 # 连接MySQL并创建数据库
-docker exec -it mysql-8.0.33 mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mingsha_template_config CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;"
+docker exec -it cloud-mysql mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mingsha_template_config CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;"
 
 # 导入数据
-docker exec -i mysql-8.0.33 mysql -uroot -p123456 mingsha_template_config < ../../sql/mingsha_template_config.sql
+docker exec -i cloud-mysql mysql -uroot -p123456 mingsha_template_config < ../../sql/mingsha_template_config.sql
 ```
 
 ## 📁 目录结构

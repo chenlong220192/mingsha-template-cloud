@@ -44,3 +44,6 @@ target
 # vue
 dist
 node_modules
+
+# AI agent
+.claude
